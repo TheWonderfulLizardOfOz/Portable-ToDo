@@ -1,5 +1,8 @@
 #include <Arduino.h>
 #include <SD.h>
+#include <U8g2lib.h>
+
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE);
 
 int taskIsFinished = 0;
 int difficulty = -1;
@@ -78,6 +81,7 @@ void setup() {
     Serial.println("File exists, will append to it");
   }
   Serial.println("Setup complete!");
+  u8g2.begin();
   Serial.println("===================================");
 }
 
@@ -96,6 +100,15 @@ void loop() {
   if (difficultyButton.isPressed()) {
     difficultyPressed();
   }
+  draw();
+}
+
+void draw() {
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_ncenB08_tr);
+  u8g2.drawStr(0, 24, "Nano Test");
+  u8g2.sendBuffer();
+  delay(16);
 }
 
 void difficultyPressed() {
@@ -138,12 +151,12 @@ void addTask(String task) {
 
   if (check == 2 && d >= 0 && d <= 2) {
     // Open the file for writing
-      dataFile = SD.open(fileName, FILE_APPEND);
+      dataFile = SD.open(fileName, FILE_WRITE);
       
       if (dataFile) {
         // Write timestamp and movement data to CSV file
         dataFile.print(task);
-        dataFile.print(", 0");
+        dataFile.print(", 0\n");
         
         // Close the file
         dataFile.close();
