@@ -2,7 +2,7 @@
 #include <SD.h>
 
 int taskIsFinished = 0;
-int difficulty = 0;
+int difficulty = -1;
 
 class Button {
   public:
@@ -77,12 +77,16 @@ void setup() {
   } else {
     Serial.println("File exists, will append to it");
   }
-  
   Serial.println("Setup complete!");
   Serial.println("===================================");
 }
 
 void loop() {
+   if (Serial.available() > 0) {
+    String incoming = Serial.readStringUntil('\n'); // Read incoming string
+    Serial.println("Received: " + incoming);         // Print to computer
+    addTask(incoming);
+  }
   // put your main code here, to run repeatedly:
   downButton.update();
   upButton.update();
@@ -96,6 +100,10 @@ void loop() {
 
 void difficultyPressed() {
   difficulty = (difficulty + 1) % 3;
+  setDifficultyLights();
+}
+
+void setDifficultyLights() {
   digitalWrite(EASY, LOW);
   digitalWrite(MEDIUM, LOW);
   digitalWrite(HARD, LOW);
@@ -118,4 +126,42 @@ void difficultyPressed() {
     default:
       break;
   }
+}
+
+void addTask(String task) {
+  char s[64];
+  int d;
+  int check = sscanf(task.c_str(), "%63[^,], %d", s, &d);
+  Serial.println(s);
+  Serial.println(d);
+  Serial.println(check);
+
+  if (check == 2 && d >= 0 && d <= 2) {
+    // Open the file for writing
+      dataFile = SD.open(fileName, FILE_APPEND);
+      
+      if (dataFile) {
+        // Write timestamp and movement data to CSV file
+        dataFile.print(task);
+        dataFile.print(", 0");
+        
+        // Close the file
+        dataFile.close();
+      } else {
+        Serial.println("Error opening file for writing");
+      }
+  } else {
+    Serial.println("Error with task format, must be '<task name>, <number 0-2>'");
+  }
+  readDataFile();
+}
+
+void readDataFile() {
+  dataFile = SD.open(fileName);
+  while (dataFile.available())
+  {
+    Serial.write(dataFile.read());
+  }
+
+  dataFile.close();
 }
