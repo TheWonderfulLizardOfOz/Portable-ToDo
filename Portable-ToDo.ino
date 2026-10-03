@@ -6,7 +6,7 @@ U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE);
 
 int taskIsFinished = 0;
 int difficulty = -1;
-int hilighted = 0;
+int highlight = 0;
 String visibleTasks[5] = {""};
 int statuses[5][2] = {
   { 0, 0 },
@@ -15,9 +15,9 @@ int statuses[5][2] = {
   { 0, 0 },
   { 0, 0 }
 };
-int taskIndex = 0;
 int screenStartIndex = 0;
 int screenEndIndex = 4;
+int taskTotal = 0;
 
 class Button {
   public:
@@ -92,9 +92,17 @@ void setup() {
   } else {
     Serial.println("File exists, will append to it");
   }
-  Serial.println("Setup complete!");
   u8g2.begin();
   setVisibleTasks(screenStartIndex, screenEndIndex);
+
+  difficulty = statuses[highlight][0];
+  setDifficultyLights();
+  taskIsFinished = statuses[highlight][1];
+  setIsFinishedLight();
+  taskTotal = countAvailableTasks();
+
+  draw();
+  Serial.println("Setup complete!");
   Serial.println("===================================");
 }
 
@@ -109,29 +117,77 @@ void loop() {
   upButton.update();
   difficultyButton.update();
   finishedButton.update();
-  Serial.println(difficultyButton.state);
 
   if (difficultyButton.isPressed()) {
     difficultyPressed();
   }
+
+  if (finishedButton.isPressed()) {
+    finishedPressed();
+  }
+
+  if (finishedButton.isPressed() || difficultyButton.isPressed()) {
+    saveTaskChanges(screenStartIndex + highlight);
+  }
+
   draw();
 }
 
 void draw() {
   u8g2.clearBuffer();
+  int yIndex;
+  int xIndex = 12;
+  int sectionHeight = 12;
+  int sectionPadding = 4;
+
   u8g2.setFont(u8g2_font_ncenB08_tr);
-  u8g2.drawStr(0, 12, visibleTasks[0].c_str());
-  u8g2.drawStr(0, 24, visibleTasks[1].c_str());
-  u8g2.drawStr(0, 36, visibleTasks[2].c_str());
-  u8g2.drawStr(0, 48, visibleTasks[3].c_str());
-  u8g2.drawStr(0, 60, visibleTasks[4].c_str());
+  // Draw Tasks
+  for (int i = 0; i < 5; i++) {
+    // case of less than 5 tasks
+    if (screenStartIndex + i >= taskTotal) {
+      break;
+    }
+    u8g2.setDrawColor(1);
+    yIndex = (i + 1) * sectionHeight;
+    
+    if (i == highlight) {
+      u8g2.drawBox(xIndex - (sectionPadding /2), yIndex - sectionHeight + (sectionPadding / 2), 128 - sectionPadding, sectionHeight);
+      u8g2.setDrawColor(0);
+    }
+    u8g2.drawStr(xIndex, yIndex, visibleTasks[i].c_str());
+
+  }
+
+  // Draw Statuses
+  u8g2.setFont(u8g2_font_open_iconic_check_1x_t);
+  u8g2.setDrawColor(1);
+  for (int i = 0; i < 5; i++) {
+    // case of less than 5 tasks
+    if (screenStartIndex + i >= taskTotal) {
+      break;
+    }
+    yIndex = (i + 1) * sectionHeight;
+    if (statuses[i][1]) {
+      u8g2.drawGlyph(0, yIndex, 64);
+    } else {
+      u8g2.drawGlyph(0, yIndex, 68);
+    }
+  }
+
   u8g2.sendBuffer();
   delay(16);
 }
 
 void difficultyPressed() {
   difficulty = (difficulty + 1) % 3;
+  statuses[highlight][0] = difficulty;
   setDifficultyLights();
+}
+
+void finishedPressed() {
+  taskIsFinished = !taskIsFinished;
+  statuses[highlight][1] = taskIsFinished;
+  setIsFinishedLight();
 }
 
 void setDifficultyLights() {
@@ -156,6 +212,14 @@ void setDifficultyLights() {
       break;
     default:
       break;
+  }
+}
+
+void setIsFinishedLight() {
+  if (taskIsFinished) {
+    digitalWrite(FINISHED, HIGH);
+  } else {
+    digitalWrite(FINISHED, LOW);
   }
 }
 
@@ -212,19 +276,32 @@ String getSubString(const String& line, int index, char sep = ',') {
   return field;
 }
 
+int countAvailableTasks() {
+  dataFile = SD.open(fileName, FILE_READ);
+  // Skip header so -1
+  int count = -1;
+  if (dataFile) {
+    while (dataFile.available()) {
+      String line = dataFile.readStringUntil('\n');
+      count += 1;
+    }
+    dataFile.close();
+  } else {
+    Serial.println("Error opening file for reading");
+    return 0;
+  }
+  return count;
+}
+
 void setVisibleTasks(int start, int end) {
   dataFile = SD.open(fileName, FILE_READ);
 
   // Skip header so -1
   int count = -1;
   int arrayIndex;
-  Serial.println(start);
-  Serial.println(end);
   if (dataFile) {
     while (dataFile.available()) {
       String line = dataFile.readStringUntil('\n');
-      Serial.println(line);
-      Serial.println(count);
       if (count >= start && count <= end) {
         arrayIndex = count - start;
         line.trim();              // strips the trailing '\r' and any spaces
@@ -243,4 +320,39 @@ void setVisibleTasks(int start, int end) {
   } else {
     Serial.println("Error opening file for reading");
   }
+}
+
+void saveTaskChanges(int taskIndex) {
+  String taskFull = visibleTasks[highlight] + ", " + String(statuses[highlight][0]) + ", " + String(statuses[highlight][1]);
+  Serial.println(taskFull);
+
+  // skip header so -1
+  int count = -1;
+  uint32_t lineStart;
+
+  dataFile = SD.open(fileName, O_RDWR);
+  if (dataFile) {
+    while (dataFile.available()) {
+      lineStart = dataFile.position();
+      String line = dataFile.readStringUntil('\n');
+      if (count == taskIndex) {
+        line.trim();   
+        if (line.length() != taskFull.length()) {
+          Serial.println("Length Mismatch!");
+          dataFile.close();
+          return;
+        }
+
+        dataFile.seek(lineStart);
+        dataFile.print(taskFull);
+      } else if (count > taskIndex) {
+        break;
+      }
+      count += 1;
+    }
+    dataFile.close();
+  } else {
+    Serial.println("Error opening file");
+  }
+  readWholeFile();
 }
