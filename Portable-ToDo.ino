@@ -135,10 +135,16 @@ void loop() {
 
 void draw() {
   u8g2.clearBuffer();
+  int screenWidth = 128;
+  int screenHeight = 64;
   int yIndex;
-  int xIndex = 12;
+  int textIndex = 12;
   int sectionHeight = 12;
   int sectionPadding = 4;
+  int difficultyWidth = 32;
+  int iconWidth = 8;
+  int textWidth = 76;
+  int difficultyIndex = 92;
 
   u8g2.setFont(u8g2_font_ncenB08_tr);
   // Draw Tasks
@@ -151,11 +157,37 @@ void draw() {
     yIndex = (i + 1) * sectionHeight;
     
     if (i == highlight) {
-      u8g2.drawBox(xIndex - (sectionPadding /2), yIndex - sectionHeight + (sectionPadding / 2), 128 - sectionPadding, sectionHeight);
+      u8g2.drawBox(textIndex - (sectionPadding /2), yIndex - sectionHeight + (sectionPadding / 2), textWidth + sectionPadding, sectionHeight);
       u8g2.setDrawColor(0);
     }
-    u8g2.drawStr(xIndex, yIndex, visibleTasks[i].c_str());
+    u8g2.drawStr(textIndex, yIndex, visibleTasks[i].c_str());
 
+  }
+
+  // Cover up overflowing text
+  u8g2.setDrawColor(0);
+  u8g2.drawBox(difficultyIndex - (sectionPadding / 2), 0, screenWidth - difficultyIndex + (sectionPadding / 2), screenHeight);
+  u8g2.setDrawColor(1);
+
+  for (int i = 0; i < 5; i++) {
+    // case of less than 5 tasks
+    if (screenStartIndex + i >= taskTotal) {
+      break;
+    }
+    yIndex = (i + 1) * sectionHeight;
+    switch (statuses[i][0]) {
+      case 0:
+        u8g2.drawStr(difficultyIndex, yIndex, "EASY");
+        break;
+      case 1:
+        u8g2.drawStr(difficultyIndex, yIndex, "MED");
+        break;
+      case 2:
+        u8g2.drawStr(difficultyIndex, yIndex, "HARD");
+        break;
+      default:
+        u8g2.drawStr(difficultyIndex, yIndex, "ERR!");
+    }
   }
 
   // Draw Statuses
@@ -173,6 +205,7 @@ void draw() {
       u8g2.drawGlyph(0, yIndex, 68);
     }
   }
+
 
   u8g2.sendBuffer();
   delay(16);
@@ -354,5 +387,4 @@ void saveTaskChanges(int taskIndex) {
   } else {
     Serial.println("Error opening file");
   }
-  readWholeFile();
 }
