@@ -6,6 +6,18 @@ U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE);
 
 int taskIsFinished = 0;
 int difficulty = -1;
+int hilighted = 0;
+String visibleTasks[5] = {""};
+int statuses[5][2] = {
+  { 0, 0 },
+  { 0, 0 },
+  { 0, 0 },
+  { 0, 0 },
+  { 0, 0 }
+};
+int taskIndex = 0;
+int screenStartIndex = 0;
+int screenEndIndex = 4;
 
 class Button {
   public:
@@ -82,6 +94,7 @@ void setup() {
   }
   Serial.println("Setup complete!");
   u8g2.begin();
+  setVisibleTasks(screenStartIndex, screenEndIndex);
   Serial.println("===================================");
 }
 
@@ -96,6 +109,7 @@ void loop() {
   upButton.update();
   difficultyButton.update();
   finishedButton.update();
+  Serial.println(difficultyButton.state);
 
   if (difficultyButton.isPressed()) {
     difficultyPressed();
@@ -106,7 +120,11 @@ void loop() {
 void draw() {
   u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_ncenB08_tr);
-  u8g2.drawStr(0, 24, "Nano Test");
+  u8g2.drawStr(0, 12, visibleTasks[0].c_str());
+  u8g2.drawStr(0, 24, visibleTasks[1].c_str());
+  u8g2.drawStr(0, 36, visibleTasks[2].c_str());
+  u8g2.drawStr(0, 48, visibleTasks[3].c_str());
+  u8g2.drawStr(0, 60, visibleTasks[4].c_str());
   u8g2.sendBuffer();
   delay(16);
 }
@@ -166,10 +184,10 @@ void addTask(String task) {
   } else {
     Serial.println("Error with task format, must be '<task name>, <number 0-2>'");
   }
-  readDataFile();
+  readWholeFile();
 }
 
-void readDataFile() {
+void readWholeFile() {
   dataFile = SD.open(fileName);
   while (dataFile.available())
   {
@@ -177,4 +195,52 @@ void readDataFile() {
   }
 
   dataFile.close();
+}
+
+String getSubString(const String& line, int index, char sep = ',') {
+  int start = 0;
+  for (int i = 0; i < index; i++) {
+    start = line.indexOf(sep, start);
+    if (start == -1) return "";
+    start++;                       // move past the separator
+  }
+  int end = line.indexOf(sep, start);
+  if (end == -1) end = line.length();
+
+  String field = line.substring(start, end);
+  field.trim();
+  return field;
+}
+
+void setVisibleTasks(int start, int end) {
+  dataFile = SD.open(fileName, FILE_READ);
+
+  // Skip header so -1
+  int count = -1;
+  int arrayIndex;
+  Serial.println(start);
+  Serial.println(end);
+  if (dataFile) {
+    while (dataFile.available()) {
+      String line = dataFile.readStringUntil('\n');
+      Serial.println(line);
+      Serial.println(count);
+      if (count >= start && count <= end) {
+        arrayIndex = count - start;
+        line.trim();              // strips the trailing '\r' and any spaces
+
+        if (line.length() == 0) continue;   // skip blank lines
+
+        visibleTasks[arrayIndex] = getSubString(line, 0);
+        statuses[arrayIndex][0] = getSubString(line, 1).toInt();
+        statuses[arrayIndex][1] = getSubString(line, 2).toInt();
+      } else if (count > end) {
+        break;
+      }
+      count += 1;
+    }
+    dataFile.close();
+  } else {
+    Serial.println("Error opening file for reading");
+  }
 }
