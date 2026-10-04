@@ -4,20 +4,19 @@
 
 U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, U8X8_PIN_NONE);
 
-int taskIsFinished = 0;
-int difficulty = -1;
-int highlight = 0;
-String visibleTasks[5] = {""};
-int statuses[5][2] = {
-  { 0, 0 },
-  { 0, 0 },
-  { 0, 0 },
-  { 0, 0 },
-  { 0, 0 }
+struct task {
+  String taskName;
+  int taskDifficulty;
+  int taskIsFinished;
 };
+
+task visibleTasks[5];
+
+
 int screenStartIndex = 0;
 int screenEndIndex = 4;
 int taskTotal = 0;
+int highlight = 0;
 
 class Button {
   public:
@@ -93,13 +92,14 @@ void setup() {
     Serial.println("File exists, will append to it");
   }
   u8g2.begin();
-  setVisibleTasks(screenStartIndex, screenEndIndex);
 
-  difficulty = statuses[highlight][0];
-  setDifficultyLights();
-  taskIsFinished = statuses[highlight][1];
-  setIsFinishedLight();
   taskTotal = countAvailableTasks();
+  
+  if (taskTotal > 0) {
+    setVisibleTasks(screenStartIndex, screenEndIndex);
+    setDifficultyLights();
+    setIsFinishedLight();
+  }
 
   draw();
   Serial.println("Setup complete!");
@@ -124,6 +124,14 @@ void loop() {
 
   if (finishedButton.isPressed()) {
     finishedPressed();
+  }
+
+  if (upButton.isPressed()) {
+    moveSelection(-1);
+    updateLights();
+  } else if (downButton.isPressed()) {
+    moveSelection(1);
+    updateLights();
   }
 
   if (finishedButton.isPressed() || difficultyButton.isPressed()) {
@@ -160,7 +168,7 @@ void draw() {
       u8g2.drawBox(textIndex - (sectionPadding /2), yIndex - sectionHeight + (sectionPadding / 2), textWidth + sectionPadding, sectionHeight);
       u8g2.setDrawColor(0);
     }
-    u8g2.drawStr(textIndex, yIndex, visibleTasks[i].c_str());
+    u8g2.drawStr(textIndex, yIndex, visibleTasks[i].taskName.c_str());
 
   }
 
@@ -175,7 +183,7 @@ void draw() {
       break;
     }
     yIndex = (i + 1) * sectionHeight;
-    switch (statuses[i][0]) {
+    switch (visibleTasks[i].taskDifficulty) {
       case 0:
         u8g2.drawStr(difficultyIndex, yIndex, "EASY");
         break;
@@ -199,27 +207,24 @@ void draw() {
       break;
     }
     yIndex = (i + 1) * sectionHeight;
-    if (statuses[i][1]) {
+    if (visibleTasks[i].taskIsFinished) {
       u8g2.drawGlyph(0, yIndex, 64);
     } else {
       u8g2.drawGlyph(0, yIndex, 68);
     }
   }
 
-
   u8g2.sendBuffer();
   delay(16);
 }
 
 void difficultyPressed() {
-  difficulty = (difficulty + 1) % 3;
-  statuses[highlight][0] = difficulty;
+  visibleTasks[highlight].taskDifficulty = (visibleTasks[highlight].taskDifficulty + 1) % 3;
   setDifficultyLights();
 }
 
 void finishedPressed() {
-  taskIsFinished = !taskIsFinished;
-  statuses[highlight][1] = taskIsFinished;
+  visibleTasks[highlight].taskIsFinished = !visibleTasks[highlight].taskIsFinished;
   setIsFinishedLight();
 }
 
@@ -227,21 +232,20 @@ void setDifficultyLights() {
   digitalWrite(EASY, LOW);
   digitalWrite(MEDIUM, LOW);
   digitalWrite(HARD, LOW);
-  Serial.println(difficulty);
 
-  switch (difficulty) {
+  if (taskTotal <= 0) {
+    return;
+  }
+
+  switch (visibleTasks[highlight].taskDifficulty) {
     case 0:
       digitalWrite(EASY, HIGH);
-      
-      Serial.println("easy");
       break;
     case 1:
       digitalWrite(MEDIUM, HIGH);
-      Serial.println("med");
       break;
     case 2:
       digitalWrite(HARD, HIGH);
-      Serial.println("hard");
       break;
     default:
       break;
@@ -249,20 +253,26 @@ void setDifficultyLights() {
 }
 
 void setIsFinishedLight() {
-  if (taskIsFinished) {
+  if (taskTotal <= 0) {
+    return;
+  }
+
+  if (visibleTasks[highlight].taskIsFinished) {
     digitalWrite(FINISHED, HIGH);
   } else {
     digitalWrite(FINISHED, LOW);
   }
 }
 
+void updateLights() {
+  setDifficultyLights();
+  setIsFinishedLight();
+}
+
 void addTask(String task) {
   char s[64];
   int d;
   int check = sscanf(task.c_str(), "%63[^,], %d", s, &d);
-  Serial.println(s);
-  Serial.println(d);
-  Serial.println(check);
 
   if (check == 2 && d >= 0 && d <= 2) {
     // Open the file for writing
@@ -275,6 +285,8 @@ void addTask(String task) {
         
         // Close the file
         dataFile.close();
+        taskTotal += 1;
+        setVisibleTasks(screenStartIndex, screenEndIndex);
       } else {
         Serial.println("Error opening file for writing");
       }
@@ -341,9 +353,9 @@ void setVisibleTasks(int start, int end) {
 
         if (line.length() == 0) continue;   // skip blank lines
 
-        visibleTasks[arrayIndex] = getSubString(line, 0);
-        statuses[arrayIndex][0] = getSubString(line, 1).toInt();
-        statuses[arrayIndex][1] = getSubString(line, 2).toInt();
+        visibleTasks[arrayIndex].taskName = getSubString(line, 0);
+        visibleTasks[arrayIndex].taskDifficulty = getSubString(line, 1).toInt();
+        visibleTasks[arrayIndex].taskIsFinished = getSubString(line, 2).toInt();
       } else if (count > end) {
         break;
       }
@@ -356,8 +368,11 @@ void setVisibleTasks(int start, int end) {
 }
 
 void saveTaskChanges(int taskIndex) {
-  String taskFull = visibleTasks[highlight] + ", " + String(statuses[highlight][0]) + ", " + String(statuses[highlight][1]);
-  Serial.println(taskFull);
+  if (taskTotal <= 0) {
+    return;
+  }
+  task curTask = visibleTasks[taskIndex];
+  String taskFull = curTask.taskName + ", " + String(curTask.taskDifficulty) + ", " + String(curTask.taskIsFinished);
 
   // skip header so -1
   int count = -1;
@@ -387,4 +402,59 @@ void saveTaskChanges(int taskIndex) {
   } else {
     Serial.println("Error opening file");
   }
+}
+
+void moveSelection(int moveDirection) {
+  int curTaskIndex = screenStartIndex + highlight;
+  int newTaskIndex = curTaskIndex + moveDirection;
+  int newHighlight = highlight + moveDirection;
+
+  if (taskTotal == 0) {
+    return;
+  }
+
+  // sets to last task
+  if (newTaskIndex < 0) {
+    newTaskIndex = taskTotal - 1;
+    if (taskTotal <= 5) {
+      highlight = newTaskIndex;
+      screenStartIndex = 0;
+      screenEndIndex = 4;
+    } else{
+      highlight = 4;
+      screenStartIndex = newTaskIndex - 4;
+      screenEndIndex = newTaskIndex;
+    }
+  } 
+  // sets to first task
+  else if (newTaskIndex >= taskTotal) {
+    newTaskIndex = 0;
+    screenStartIndex = 0;
+    highlight = 0;
+    if (taskTotal <= 5) {
+      screenEndIndex = taskTotal - 1;
+    } else {
+      screenEndIndex = 4;
+    }
+  }
+  // move up screen
+  else if (newHighlight < 0) {
+    highlight = 0;
+    screenStartIndex -= 1;
+    screenEndIndex -= 1;
+  }
+
+  // move down screen
+  else if (newHighlight > 4) {
+    highlight = 4;
+    screenStartIndex += 1;
+    screenEndIndex += 1;
+  }
+
+  // simply move selection
+  else {
+    highlight = newHighlight;
+  }
+
+  setVisibleTasks(screenStartIndex, screenEndIndex);
 }
