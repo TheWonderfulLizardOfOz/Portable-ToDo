@@ -371,7 +371,7 @@ void saveTaskChanges(int taskIndex) {
   if (taskTotal <= 0) {
     return;
   }
-  task curTask = visibleTasks[taskIndex];
+  task curTask = visibleTasks[highlight];
   String taskFull = curTask.taskName + ", " + String(curTask.taskDifficulty) + ", " + String(curTask.taskIsFinished);
 
   // skip header so -1
